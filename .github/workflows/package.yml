@@ -1,0 +1,70 @@
+name: Package Windows EXE
+run-name: "Package ${{ inputs.game_profile }} (run ${{ github.run_number }})"
+
+on:
+  workflow_dispatch:
+    inputs:
+      game_profile:
+        description: Game profile to package
+        type: choice
+        default: phantom-blade-zero
+        options:
+          - phantom-blade-zero
+          - mortal-shell-2
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GAME_PROFILE: ${{ inputs.game_profile }}
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - name: Test, publish single-file EXE and create ZIP
+        run: ./publish.ps1 -Configuration Release -GameProfile $env:GAME_PROFILE
+      - name: Verify package and generate SHA-256
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packages = @(Get-ChildItem dist/release/*.zip)
+          if ($packages.Count -ne 1) { throw 'Expected exactly one release ZIP.' }
+          $package = $packages[0]
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
+          try {
+            $exe = $zip.GetEntry('UEModManager.exe')
+            if ($null -eq $exe -or $exe.Length -eq 0) { throw 'The ZIP does not contain a non-empty UEModManager.exe.' }
+          } finally {
+            $zip.Dispose()
+          }
+          $hash = (Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($package.Name)" | Set-Content "$($package.FullName).sha256" -Encoding ascii
+          @"
+          ## Windows x64 package
+          - Game profile: $env:GAME_PROFILE
+          - Commit: $env:GITHUB_SHA
+          - Package: $($package.Name)
+          - SHA-256: $hash
+          - Download the package from **Artifacts** below (retained for 30 days).
+          - Extract the ZIP to get UEModManager.exe. Requires the **.NET 8 Desktop Runtime (x64)**.
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Upload EXE package
+        uses: actions/upload-artifact@v4
+        with:
+          name: uemm-${{ inputs.game_profile }}-win-x64-${{ github.run_number }}
+          path: |
+            dist/release/*.zip
+            dist/release/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

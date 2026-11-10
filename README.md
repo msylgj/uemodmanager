@@ -675,6 +675,20 @@ check reads that release.
 app is early in its development and changes often. Releases set it to
 `false`.
 
+### Build an EXE package in GitHub Actions
+
+Open **Actions → Package Windows EXE → Run workflow**, select a branch and game
+profile (normally **main / phantom-blade-zero**), then run it. The Windows job
+uses the existing publish script: it runs the tests, publishes the single-file
+x64 EXE, checks its embedded resources, and creates a ZIP. No GitHub release
+or tag is created.
+
+Once the run succeeds, download **uemm-&lt;game&gt;-win-x64-&lt;run number&gt;** from its
+**Artifacts** section. The artifact contains the release ZIP and its SHA-256
+checksum. Extract the release ZIP to get **UEModManager.exe**; it requires the
+**.NET 8 Desktop Runtime (x64)**. Artifacts are kept for **30 days**. The run
+summary records the exact commit and package checksum.
+
 ## Updates
 
 At every start the app reads the newest release of
